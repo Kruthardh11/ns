@@ -1,6 +1,6 @@
 # scanner.py
 import os
-from scapy.all import ICMP, IP, sr1
+from scapy.all import ICMP, IP, sr1, TCP
 from ipaddress import ip_network
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
@@ -11,9 +11,24 @@ print_lock = Lock()
 
 def ping(host):
     try:
-        # Added inter and retry parameters for Windows compatibility
-        response = sr1(IP(dst=str(host))/ICMP(), timeout=1, verbose=0, inter=0.1, retry=0)
-        return str(host) if response else None
+        # Send TCP SYN packet to port 80 (HTTP)
+        response = sr1(
+            IP(dst=str(host))/TCP(dport=80, flags="S"),
+            timeout=2,
+            verbose=0,
+            retry=0
+        )
+        
+        # Check for SYN-ACK response (flags 0x12)
+        if response and response.haslayer(TCP):
+            if response[TCP].flags == 0x12:  # SYN-ACK
+                return str(host)
+            # Send RST to close connection if needed
+            sr1(IP(dst=str(host))/TCP(dport=80, flags="R"), 
+                timeout=1, 
+                verbose=0
+            )
+        return None
     except Exception as e:
         return None
 
